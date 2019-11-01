@@ -2515,7 +2515,7 @@ ngx_http_upstream_check_status_update(ngx_http_upstream_check_peer_t *peer,
         peer->shm->fall_count = 0;
         if (peer->shm->down && peer->shm->rise_count >= ucscf->rise_count) {
             peer->shm->down = 0;
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0,
+            ngx_log_error(NGX_LOG_INFO, ngx_cycle->log, 0,
                           "enable check peer: %V ",
                           &peer->check_peer_addr->name);
         }
@@ -2524,7 +2524,7 @@ ngx_http_upstream_check_status_update(ngx_http_upstream_check_peer_t *peer,
         peer->shm->fall_count++;
         if (!peer->shm->down && peer->shm->fall_count >= ucscf->fall_count) {
             peer->shm->down = 1;
-            ngx_log_error(NGX_LOG_ERR, ngx_cycle->log, 0,
+            ngx_log_error(NGX_LOG_INFO, ngx_cycle->log, 0,
                           "disable check peer: %V ",
                           &peer->check_peer_addr->name);
         }
@@ -2587,7 +2587,7 @@ ngx_http_upstream_check_timeout_handler(ngx_event_t *event)
     peer = event->data;
     peer->pc.connection->error = 1;
 
-    ngx_log_error(NGX_LOG_ERR, event->log, 0,
+    ngx_log_error(NGX_LOG_DEBUG, event->log, 0,
                   "check time out with peer: %V ",
                   &peer->check_peer_addr->name);
 
