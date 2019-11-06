@@ -1,5 +1,5 @@
 diff --git a/src/http/modules/ngx_http_upstream_hash_module.c b/src/http/modules/ngx_http_upstream_hash_module.c
-index 777e180..e302f52 100644
+index 777e180..b6b7830 100644
 --- a/src/http/modules/ngx_http_upstream_hash_module.c
 +++ b/src/http/modules/ngx_http_upstream_hash_module.c
 @@ -9,6 +9,9 @@
@@ -12,7 +12,7 @@ index 777e180..e302f52 100644
  
  typedef struct {
      uint32_t                            hash;
-@@ -240,6 +243,14 @@ ngx_http_upstream_get_hash_peer(ngx_peer_connection_t *pc, void *data)
+@@ -240,6 +243,15 @@ ngx_http_upstream_get_hash_peer(ngx_peer_connection_t *pc, void *data)
              goto next;
          }
  
@@ -24,10 +24,11 @@ index 777e180..e302f52 100644
 +            goto next;
 +        }
 +#endif
++
          if (peer->max_fails
              && peer->fails >= peer->max_fails
              && now - peer->checked <= peer->fail_timeout)
-@@ -506,6 +517,14 @@ ngx_http_upstream_get_chash_peer(ngx_peer_connection_t *pc, void *data)
+@@ -506,6 +518,15 @@ ngx_http_upstream_get_chash_peer(ngx_peer_connection_t *pc, void *data)
                  continue;
              }
  
@@ -39,6 +40,7 @@ index 777e180..e302f52 100644
 +            continue;
 +        }
 +#endif
++
              if (peer->server.len != server->len
                  || ngx_strncmp(peer->server.data, server->data, server->len)
                     != 0)
@@ -73,7 +75,7 @@ index 148d73a..913e395 100644
              && peer->fails >= peer->max_fails
              && now - peer->checked <= peer->fail_timeout)
 diff --git a/src/http/modules/ngx_http_upstream_least_conn_module.c b/src/http/modules/ngx_http_upstream_least_conn_module.c
-index dbef95d..bbabb68 100644
+index 623bc9b..a223839 100644
 --- a/src/http/modules/ngx_http_upstream_least_conn_module.c
 +++ b/src/http/modules/ngx_http_upstream_least_conn_module.c
 @@ -9,6 +9,9 @@
@@ -121,7 +123,7 @@ index dbef95d..bbabb68 100644
                  continue;
              }
 diff --git a/src/http/ngx_http_upstream_round_robin.c b/src/http/ngx_http_upstream_round_robin.c
-index 37c835c..54aa44d 100644
+index 2d0649b..b9789eb 100644
 --- a/src/http/ngx_http_upstream_round_robin.c
 +++ b/src/http/ngx_http_upstream_round_robin.c
 @@ -9,6 +9,9 @@
@@ -132,9 +134,9 @@ index 37c835c..54aa44d 100644
 +#include "ngx_http_upstream_check_module.h"
 +#endif
  
- static ngx_http_upstream_rr_peer_t *ngx_http_upstream_get_peer(
-     ngx_http_upstream_rr_peer_data_t *rrp);
-@@ -88,6 +91,14 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
+ #define ngx_http_upstream_tries(p) ((p)->number                               \
+                                     + ((p)->next ? (p)->next->number : 0))
+@@ -92,6 +95,14 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
                  peer[n].fail_timeout = server[i].fail_timeout;
                  peer[n].down = server[i].down;
                  peer[n].server = server[i].name;
@@ -149,7 +151,7 @@ index 37c835c..54aa44d 100644
                  n++;
              }
          }
-@@ -144,6 +155,15 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
+@@ -148,6 +159,15 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
                  peer[n].fail_timeout = server[i].fail_timeout;
                  peer[n].down = server[i].down;
                  peer[n].server = server[i].name;
@@ -165,7 +167,7 @@ index 37c835c..54aa44d 100644
                  n++;
              }
          }
-@@ -203,6 +223,9 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
+@@ -207,6 +227,9 @@ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
          peer[i].current_weight = 0;
          peer[i].max_fails = 1;
          peer[i].fail_timeout = 10;
@@ -175,7 +177,7 @@ index 37c835c..54aa44d 100644
      }
  
      us->peer.data = peers;
-@@ -312,7 +335,9 @@ ngx_http_upstream_create_round_robin_peer(ngx_http_request_t *r,
+@@ -316,7 +339,9 @@ ngx_http_upstream_create_round_robin_peer(ngx_http_request_t *r,
          peer[0].current_weight = 0;
          peer[0].max_fails = 1;
          peer[0].fail_timeout = 10;
@@ -186,7 +188,7 @@ index 37c835c..54aa44d 100644
      } else {
  
          for (i = 0; i < ur->naddrs; i++) {
-@@ -352,6 +377,9 @@ ngx_http_upstream_create_round_robin_peer(ngx_http_request_t *r,
+@@ -356,6 +381,9 @@ ngx_http_upstream_create_round_robin_peer(ngx_http_request_t *r,
              peer[i].current_weight = 0;
              peer[i].max_fails = 1;
              peer[i].fail_timeout = 10;
@@ -196,7 +198,7 @@ index 37c835c..54aa44d 100644
          }
      }
  
-@@ -411,6 +439,12 @@ ngx_http_upstream_get_round_robin_peer(ngx_peer_connection_t *pc, void *data)
+@@ -415,6 +443,12 @@ ngx_http_upstream_get_round_robin_peer(ngx_peer_connection_t *pc, void *data)
              goto failed;
          }
  
@@ -209,7 +211,7 @@ index 37c835c..54aa44d 100644
      } else {
  
          /* there are several peers */
-@@ -508,6 +542,12 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
+@@ -507,6 +541,12 @@ ngx_http_upstream_get_peer(ngx_http_upstream_rr_peer_data_t *rrp)
              continue;
          }
  

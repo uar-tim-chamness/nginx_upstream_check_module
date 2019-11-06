@@ -84,7 +84,6 @@ typedef struct {
 
     ngx_uint_t                               busyness;
     ngx_uint_t                               access_count;
-    ngx_str_t                               *upstream_name;
 
     struct sockaddr                         *sockaddr;
     socklen_t                                socklen;
@@ -469,13 +468,12 @@ static ngx_shm_zone_t *ngx_shared_memory_find(ngx_cycle_t *cycle,
     ngx_str_t *name, void *tag);
 static ngx_http_upstream_check_peer_shm_t *
 ngx_http_upstream_check_find_shm_peer(ngx_http_upstream_check_peers_shm_t *peers_shm,
-    ngx_addr_t *addr, ngx_str_t *upstream_name);
+    ngx_addr_t *addr);
 
 static ngx_int_t ngx_http_upstream_check_init_shm_peer(
     ngx_http_upstream_check_peer_shm_t *peer_shm,
     ngx_http_upstream_check_peer_shm_t *opeer_shm,
-    ngx_uint_t init_down, ngx_pool_t *pool, ngx_str_t *peer_name,
-    ngx_str_t *upstream_name);
+    ngx_uint_t init_down, ngx_pool_t *pool, ngx_str_t *peer_name);
 
 static ngx_int_t ngx_http_upstream_check_init_shm_zone(
     ngx_shm_zone_t *shm_zone, void *data);
@@ -597,27 +595,32 @@ static ngx_str_t fastcgi_default_params[] = {
  */
 static char sslv3_client_hello_pkt[] = {
     "\x16"                /* ContentType         : 0x16 = Hanshake           */
-    "\x03\x00"            /* ProtocolVersion     : 0x0300 = SSLv3            */
-    "\x00\x79"            /* ContentLength       : 0x79 bytes after this one */
+    "\x03\x01"            /* ProtocolVersion     : 0x0301 = TLSv1.0          */
+    "\x00\x6f"            /* ContentLength       : 0x6f bytes after this one */
     "\x01"                /* HanshakeType        : 0x01 = CLIENT HELLO       */
-    "\x00\x00\x75"        /* HandshakeLength     : 0x75 bytes after this one */
-    "\x03\x00"            /* Hello Version       : 0x0300 = v3               */
+    "\x00\x00\x6b"        /* HandshakeLength     : 0x6b bytes after this one */
+    "\x03\x03"            /* Hello Version       : 0x0303 = TLSv1.2          */
     "\x00\x00\x00\x00"    /* Unix GMT Time (s)   : filled with <now> (@0x0B) */
     NGX_SSL_RANDOM        /* Random              : must be exactly 28 bytes  */
     "\x00"                /* Session ID length   : empty (no session ID)     */
-    "\x00\x4E"            /* Cipher Suite Length : 78 bytes after this one   */
-    "\x00\x01" "\x00\x02" "\x00\x03" "\x00\x04" /* 39 most common ciphers :  */
-    "\x00\x05" "\x00\x06" "\x00\x07" "\x00\x08" /* 0x01...0x1B, 0x2F...0x3A  */
-    "\x00\x09" "\x00\x0A" "\x00\x0B" "\x00\x0C" /* This covers RSA/DH,       */
-    "\x00\x0D" "\x00\x0E" "\x00\x0F" "\x00\x10" /* various bit lengths,      */
-    "\x00\x11" "\x00\x12" "\x00\x13" "\x00\x14" /* SHA1/MD5, DES/3DES/AES... */
-    "\x00\x15" "\x00\x16" "\x00\x17" "\x00\x18"
-    "\x00\x19" "\x00\x1A" "\x00\x1B" "\x00\x2F"
-    "\x00\x30" "\x00\x31" "\x00\x32" "\x00\x33"
-    "\x00\x34" "\x00\x35" "\x00\x36" "\x00\x37"
-    "\x00\x38" "\x00\x39" "\x00\x3A"
+    "\x00\x1a"            /* Cipher Suite Length : \x1a bytes after this one */
+    "\xc0\x2b" "\xc0\x2f" "\xcc\xa9" "\xcc\xa8"  /* 13 modern ciphers        */
+    "\xc0\x0a" "\xc0\x09" "\xc0\x13" "\xc0\x14"
+    "\x00\x33" "\x00\x39" "\x00\x2f" "\x00\x35"
+    "\x00\x0a"
     "\x01"                /* Compression Length  : 0x01 = 1 byte for types   */
     "\x00"                /* Compression Type    : 0x00 = NULL compression   */
+    "\x00\x28"            /* Extensions length */
+    "\x00\x0a"            /* EC extension */
+    "\x00\x08"            /* extension length */
+    "\x00\x06"            /* curves length */
+    "\x00\x17" "\x00\x18" "\x00\x19" /* Three curves */
+    "\x00\x0d"            /* Signature extension */
+    "\x00\x18"            /* extension length */
+    "\x00\x16"            /* hash list length */
+    "\x04\x01" "\x05\x01" "\x06\x01" "\x02\x01"  /* 11 hash algorithms */
+    "\x04\x03" "\x05\x03" "\x06\x03" "\x02\x03"
+    "\x05\x02" "\x04\x02" "\x02\x02"
 };
 
 
@@ -1132,6 +1135,7 @@ ngx_http_upstream_check_connect_handler(ngx_event_t *event)
 
     if (rc == NGX_ERROR || rc == NGX_DECLINED) {
         ngx_http_upstream_check_status_update(peer, 0);
+        ngx_http_upstream_check_clean_event(peer);
         return;
     }
 
@@ -3895,15 +3899,14 @@ ngx_http_upstream_check_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
         if (opeers_shm) {
 
             opeer_shm = ngx_http_upstream_check_find_shm_peer(opeers_shm,
-                                                              peer[i].peer_addr,
-                                                              peer[i].upstream_name);
+                                                              peer[i].peer_addr);
             if (opeer_shm) {
                 ngx_log_debug1(NGX_LOG_DEBUG_HTTP, shm_zone->shm.log, 0,
                                "http upstream check, inherit opeer: %V ",
                                &peer[i].peer_addr->name);
 
                 rc = ngx_http_upstream_check_init_shm_peer(peer_shm, opeer_shm,
-                         0, pool, &peer[i].peer_addr->name, peer[i].upstream_name);
+                         0, pool, &peer[i].peer_addr->name);
                 if (rc != NGX_OK) {
                     return NGX_ERROR;
                 }
@@ -3915,8 +3918,7 @@ ngx_http_upstream_check_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
         ucscf = peer[i].conf;
         rc = ngx_http_upstream_check_init_shm_peer(peer_shm, NULL,
                                                    ucscf->default_down, pool,
-                                                   &peer[i].peer_addr->name,
-                                                   peer[i].upstream_name);
+                                                   &peer[i].peer_addr->name);
         if (rc != NGX_OK) {
             return NGX_ERROR;
         }
@@ -3978,7 +3980,7 @@ ngx_shared_memory_find(ngx_cycle_t *cycle, ngx_str_t *name, void *tag)
 
 static ngx_http_upstream_check_peer_shm_t *
 ngx_http_upstream_check_find_shm_peer(ngx_http_upstream_check_peers_shm_t *p,
-    ngx_addr_t *addr, ngx_str_t *upstream_name)
+    ngx_addr_t *addr)
 {
     ngx_uint_t                          i;
     ngx_http_upstream_check_peer_shm_t *peer_shm;
@@ -3991,9 +3993,7 @@ ngx_http_upstream_check_find_shm_peer(ngx_http_upstream_check_peers_shm_t *p,
             continue;
         }
 
-        if ((ngx_memcmp(addr->sockaddr, peer_shm->sockaddr, addr->socklen) == 0)
-            && (ngx_strncmp(upstream_name->data, peer_shm->upstream_name->data,
-                            upstream_name->len) == 0)) {
+        if (ngx_memcmp(addr->sockaddr, peer_shm->sockaddr, addr->socklen) == 0) {
             return peer_shm;
         }
     }
@@ -4005,7 +4005,7 @@ ngx_http_upstream_check_find_shm_peer(ngx_http_upstream_check_peers_shm_t *p,
 static ngx_int_t
 ngx_http_upstream_check_init_shm_peer(ngx_http_upstream_check_peer_shm_t *psh,
     ngx_http_upstream_check_peer_shm_t *opsh, ngx_uint_t init_down,
-    ngx_pool_t *pool, ngx_str_t *name, ngx_str_t *upstream_name)
+    ngx_pool_t *pool, ngx_str_t *name)
 {
     u_char  *file;
 
@@ -4018,7 +4018,6 @@ ngx_http_upstream_check_init_shm_peer(ngx_http_upstream_check_peer_shm_t *psh,
         psh->busyness     = opsh->busyness;
 
         psh->down         = opsh->down;
-        psh->upstream_name = opsh->upstream_name;
 
     } else {
         psh->access_time  = 0;
@@ -4029,7 +4028,6 @@ ngx_http_upstream_check_init_shm_peer(ngx_http_upstream_check_peer_shm_t *psh,
         psh->busyness     = 0;
 
         psh->down         = init_down;
-        psh->upstream_name = upstream_name;
     }
 
 #if (NGX_HAVE_ATOMIC_OPS)
@@ -4062,5 +4060,16 @@ ngx_http_upstream_check_init_shm_peer(ngx_http_upstream_check_peer_shm_t *psh,
 static ngx_int_t
 ngx_http_upstream_check_init_process(ngx_cycle_t *cycle)
 {
+    ngx_http_upstream_check_main_conf_t *ucmcf;
+
+    if (ngx_process != NGX_PROCESS_WORKER) {
+        return NGX_OK;
+    }
+
+    ucmcf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_upstream_check_module);
+    if (ucmcf == NULL) {
+        return NGX_OK;
+    }
+
     return ngx_http_upstream_check_add_timers(cycle);
 }
